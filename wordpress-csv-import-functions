@@ -1,0 +1,130 @@
+/**
+ * Adds "Import" button on the list page
+ */
+add_action('admin_head','add_import_file_button');
+function add_import_file_button() {
+    global $current_screen;
+    
+    $post-type = 'change to anything you want' // put the 'post' or custom post type of your choice
+
+    // Not our post type, exit earlier
+    // You can remove this if condition if you don't have any specific post type to restrict to. 
+    if ($post-type != $current_screen->post_type) {
+        return;
+    } ?>
+    <script type="text/javascript">
+        jQuery(document).ready( function($) {
+            jQuery('hr.wp-header-end').before("<a id='doc_popup' href='edit.php?post_type=$post-type&page=import-file' class='add-new-h2'>Import File</a>");
+        });
+    </script>
+    <?php
+}
+
+/**
+ * Adds a submenu page under a custom post type parent.
+ */
+add_action('admin_menu', 'register_import_file_menu');
+function register_import_file_menu() {
+    add_submenu_page(
+        'edit.php?post_type=ms-music',
+        __( 'Import File', 'textdomain' ),
+        __( 'Import File', 'textdomain' ),
+        'manage_options',
+        'import-file',
+        '_import_file_callback'
+    );
+}
+ 
+/**
+ * Display callback for the submenu page.
+ */
+function _import_file_callback() { 
+	upload_track_csv();
+    ?>
+    <div class="wrap">
+        <h1><?php _e( 'Import File', 'textdomain' ); ?></h1>        
+    	<h2>Upload a File</h2>
+    	<!-- Form to handle the upload - The enctype value here is very important -->
+        <form method="post" enctype="multipart/form-data">
+			<input type="file" name="uploadfile" id="file_upload" />    
+			<?php submit_button('Upload') ?>
+		</form>
+    </div>        
+    <?php
+}
+
+function upload_file_csv(){
+	global $wpdb;
+
+	// Configuration - Your Options
+	$allowed_filetypes = array('csv'); // These will be the types of file that will pass the validation.
+	$max_filesize = 524288;             // Maximum filesize in BYTES (currently 0.5MB).
+	#$target_dir = wp_upload_dir();
+	
+	if ($_FILES['uploadfile']['name']) {
+  		if ( ! $_FILES['uploadfile']['error'] ) {
+
+			// can't be larger than 500 KB 
+		    if ($_FILES['uploadfile']['size'] > $max_filesize) {
+		    	//wp_die generates a visually appealing message element
+		    	wp_die('Your file size is to large.');
+		    } else {
+	        	// Get the data from all those CSVs!
+		  		$posts = function() {
+					  $data = array();
+        		// get file info
+        	  // @fixme: wp checks the file extension....
+        		$filename = $_FILES['uploadfile']['name']; // Get the name of the file (including file extension).
+        	  $filetype = wp_check_filetype( basename( $filename ), null );
+	          $target_dir = wp_upload_dir();
+        	  $target_file = $target_dir['path'] . '/' . basename($filename);
+        	    
+            // Let WordPress handle the upload.
+    				// Remember, 'upload' is the name of our file input in our form above.
+    				$file_id = media_handle_upload( 'uploadfile', 0 );
+					
+			    	// Check if file is writable, then open it in 'read only' mode
+				    if ( is_readable( $target_file ) && $_file = fopen( $target_file, "r" ) ) {
+            
+              // To sum this part up, all it really does is go row by
+              // row, column by column, saving all the data
+              $post = array();
+                // Get first row in CSV, which is of course the headers
+                $header = fgetcsv( $_file, 100, ',' );
+
+                while ( ($row = fgetcsv($_file, 100, ",")) !== false ) {
+                    foreach ( $header as $i => $key ) {
+                          $post[$key] = $row[$i];
+                      }
+
+                      $data[] = $post;
+                }
+              fclose( $_file );
+				    } else {
+				    	echo "<div class='error'><p>File '$filename' could not be opened. Check the file's permissions to make sure it's readable by your server.</p></div>";
+				    }
+				    
+				    return $data;
+		        };
+		        
+		        foreach ( $posts() as $post ) {
+					// If the post exists, skip this post and go to the next one
+					/*if ( $post_exists( $post["title"] ) ) {
+						continue;
+					}*/
+
+					// Insert a post sample into the database
+					$post["id"] = wp_insert_post( array(
+						"post_content" => $post["post_content"],
+						"post_title" => $post["post_title"],
+						"post_type" => $post["post_type"],
+						"post_status" => "draft"
+					));
+		        }
+			}
+		} else {
+	    	//set that to be the returned message
+	    	echo "<div class='error'><p><strong>Error:</strong> ". $_FILES['uploadfile']['error']."</p></div>";
+	  	}
+	}    
+}
